@@ -277,20 +277,26 @@ function interpolate(text) {
 function resolveDecision(node) {
   const rules = node.options.split(';');
   for (const rule of rules) {
-    const [condition, target] = rule.split(':');
-    const [type, ...values] = condition.split('=');
-    const valueList = values.join('=').split('|');
+    const colonIdx = rule.lastIndexOf(':');
+    const condition = rule.substring(0, colonIdx);
+    const target = rule.substring(colonIdx + 1);
+    const eqIdx = condition.indexOf('=');
+    const type = condition.substring(0, eqIdx);
+    const valueStr = condition.substring(eqIdx + 1);
+    const valueList = valueStr.split('|');
+
     if (type === 'answer') {
       const lastAnswer = Object.values(state.answers).slice(-1)[0];
-      if (valueList.some(v => lastAnswer && lastAnswer.includes(v.trim()))) return target;
+      if (lastAnswer && valueList.some(v => lastAnswer.trim() === v.trim())) return target;
     }
     if (type === 'signal') {
-      const [axis, val] = valueList[0].split(':');
-      const signalKey = axis; // e.g. "axis1"
-      if (state.signals[signalKey] && state.signals[signalKey].endsWith(':' + val)) return target;
+      const [sigAxis, sigVal] = valueList[0].split(':');
+      if (state.signals[sigAxis] && state.signals[sigAxis] === `${sigAxis}:${sigVal}`) return target;
     }
   }
-  return null;
+  // fallback: first target
+  const first = node.options.split(';')[0];
+  return first.substring(first.lastIndexOf(':') + 1);
 }
 
 function getAxisFromNodeId(id) {
@@ -363,11 +369,6 @@ function renderNode(nodeId) {
 
   if (node.type === 'summary') { renderSummary(); return; }
 
-  if (node.signal) {
-    const [axis] = node.signal.split(':');
-    if (!state.signals[axis]) state.signals[axis] = node.signal;
-  }
-
   updatePips(nodeId);
 
   const container = document.getElementById('node-container');
@@ -391,15 +392,15 @@ function renderNode(nodeId) {
         btn.classList.add('selected');
         selected = opt;
         state.answers[nodeId] = opt;
-        if (node.signal) {
-          const [axis] = node.signal.split(':');
-          state.signals[axis] = node.signal;
-        }
         if (!document.querySelector('.continue-btn')) {
           const cont = document.createElement('button');
           cont.className = 'continue-btn';
           cont.textContent = 'Continue →';
           cont.onclick = () => {
+            if (node.signal) {
+              const [axis] = node.signal.split(':');
+              if (!state.signals[axis]) state.signals[axis] = node.signal;
+            }
             if (node.target) renderNode(node.target);
           };
           card.appendChild(cont);
